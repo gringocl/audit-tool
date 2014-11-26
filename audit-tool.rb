@@ -76,6 +76,7 @@ auto_files = {}
 # audit each line
 matches.each_with_index do |match, index|
   redis_key = "#{key_prefix}:#{match[:file]}:#{match[:code]}"
+    .gsub(/dbalatero\/code\//, "miles/Projects/")
 
   if redis.exists(redis_key)
     value = redis.get(redis_key)

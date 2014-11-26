@@ -79,15 +79,24 @@ matches.each_with_index do |match, index|
     .gsub(/dbalatero\/code\//, "miles/Projects/")
 
   if redis.exists(redis_key)
-    value = redis.get(redis_key)
+    if ENV.has_key?('DUMP_TODO_LIST')
+      next unless redis.get(redis_key) == 'n'
 
-    if value == 'n' && !ENV.has_key?('IGNORE_NEEDS_FIXING')
-      puts "This needs to be fixed:"
-      puts
-      print_code(match)
-      $stdin.gets
+      puts "- [ ] **#{match[:file].gsub(/#{path}\/?/, '')}**:*#{match[:line]}* "\
+        "`#{match[:code][0...80]}`"
+    else
+      value = redis.get(redis_key)
+
+      if value == 'n' && !ENV.has_key?('IGNORE_NEEDS_FIXING')
+        puts "This needs to be fixed:"
+        puts
+        print_code(match)
+        $stdin.gets
+      end
     end
   else
+    next if ENV.has_key?('DUMP_TODO_LIST')
+
     if auto_files.has_key?(match[:file])
       redis.set(redis_key, auto_files[match[:file]])
       next

@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # Usage:
 #
-#   audit-tool <regex>
+#   audit-tool <regex> <path>
 
 class RetryError < StandardError; end
 
@@ -9,17 +9,21 @@ require 'bundler/setup'
 require 'pp'
 Bundler.require
 
-if ARGV.size != 1
-  abort "Usage: audit-tool <regex>"
+if ARGV.size != 2
+  abort "Usage: audit-tool <regex> <path>"
 end
 
-regex = ARGV.first
+regex, path = ARGV
 
 key_prefix = "audit-tool:#{regex}"
 
 redis = Redis.new
 
-search_result = `ag #{regex.inspect}`.strip
+cmd = "ag --ignore CHANGELOG.md --ignore db/ "\
+  "--ignore config/locales --ignore spec/fixtures/cassettes "\
+  "--ignore-case #{regex.inspect} #{path.inspect}"
+
+search_result = `#{cmd}`.strip
 
 matches = search_result.split(/\n+/).map do |line|
   file, line, code = line.match(/^(.+?):(\d+):(.+?)$/)[1..3]
@@ -67,6 +71,8 @@ def print_line(num, line, color = :white)
   puts line.colorize(color)
 end
 
+auto_files = {}
+
 # audit each line
 matches.each_with_index do |match, index|
   redis_key = "#{key_prefix}:#{match[:file]}:#{match[:code]}"
@@ -81,16 +87,31 @@ matches.each_with_index do |match, index|
       $stdin.gets
     end
   else
+    if auto_files.has_key?(match[:file])
+      redis.set(redis_key, auto_files[match[:file]])
+      next
+    end
+
     begin
+      puts "Auditing #{index} of #{matches.size}. "\
+        "Only #{matches.size - index} to go!".colorize(:blue)
+      puts
+
       print_code(match)
       puts
-      print "Is this line of code okay? [y/n] ".colorize(:red)
+      print "Is this line of code okay? [y/n/fy/fn] ".colorize(:red)
       answer = $stdin.gets.strip.downcase
       puts
 
       case answer
       when 'y', 'n'
         redis.set(redis_key, answer)
+      when /^f([yn])$/
+        # Marking a whole file y or n
+        redis.set(redis_key, $1)
+
+        # Save it for later
+        auto_files[match[:file]] = $1
       else
         raise RetryError
       end
